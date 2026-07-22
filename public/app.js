@@ -1,6 +1,7 @@
 // ===== Constants =====
 const STORAGE_KEY = "jesse_ai_chats";
 const AI_NAME_KEY = "jesse_ai_name";
+const THEME_KEY = "jesse_ai_theme";
 
 // ===== Mood config =====
 const MOODS = {
@@ -26,6 +27,7 @@ const welcomeScreen = document.getElementById("welcomeScreen");
 const welcomeTitle = document.getElementById("welcomeTitle");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
+const voiceBtn = document.getElementById("voiceBtn");
 const newChatBtn = document.getElementById("newChatBtn");
 const menuToggle = document.getElementById("menuToggle");
 const sidebar = document.querySelector(".sidebar");
@@ -39,6 +41,9 @@ const inputHint = document.getElementById("inputHint");
 const nameModal = document.getElementById("nameModal");
 const aiNameInput = document.getElementById("aiNameInput");
 const saveNameBtn = document.getElementById("saveNameBtn");
+const themeToggle = document.getElementById("themeToggle");
+const themeIcon = document.getElementById("themeIcon");
+const themeText = document.getElementById("themeText");
 
 // ===== Apply AI name across UI =====
 function applyAiName(name) {
@@ -463,8 +468,79 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
   });
 });
 
+// ===== Theme toggle =====
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+  if (theme === "light") {
+    themeIcon.textContent = "🌙";
+    themeText.textContent = "Dark mode";
+  } else {
+    themeIcon.textContent = "☀️";
+    themeText.textContent = "Light mode";
+  }
+}
+
+themeToggle.addEventListener("click", () => {
+  const current = document.documentElement.getAttribute("data-theme");
+  applyTheme(current === "dark" ? "light" : "dark");
+});
+
+// ===== Voice Input =====
+let isRecording = false;
+let recognition = null;
+
+if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
+
+  recognition.onstart = () => {
+    isRecording = true;
+    voiceBtn.classList.add("recording");
+    voiceBtn.title = "Listening... click to stop";
+  };
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results)
+      .map((r) => r[0].transcript)
+      .join("");
+    messageInput.value = transcript;
+    messageInput.style.height = "auto";
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
+    sendBtn.disabled = transcript.trim() === "";
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    voiceBtn.classList.remove("recording");
+    voiceBtn.title = "Speak your message";
+    if (messageInput.value.trim()) sendBtn.disabled = false;
+  };
+
+  recognition.onerror = () => {
+    isRecording = false;
+    voiceBtn.classList.remove("recording");
+  };
+
+  voiceBtn.addEventListener("click", () => {
+    if (isRecording) {
+      recognition.stop();
+    } else {
+      recognition.start();
+    }
+  });
+} else {
+  // Browser doesn't support speech recognition
+  voiceBtn.style.display = "none";
+}
+
 // ===== Init =====
 window.addEventListener("load", () => {
+  const savedTheme = localStorage.getItem(THEME_KEY) || "dark";
+  applyTheme(savedTheme);
   checkNameSetup();
   beginNewChat();
   updateMood("neutral");

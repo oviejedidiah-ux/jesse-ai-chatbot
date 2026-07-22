@@ -690,3 +690,84 @@ textarea#messageInput::placeholder {
   color: var(--text-muted);
   transition: color 0.4s ease;
 }
+
+/* ===== Light Mode ===== */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f4f4;
+  --bg-sidebar: #f9f9f9;
+  --bg-input: #f4f4f4;
+  --bg-user-msg: #f0f0f0;
+  --text-primary: #0d0d0d;
+  --text-secondary: #444;
+  --text-muted: #888;
+  --border: #e0e0e0;
+  --border-input: #ccc;
+  --send-btn-bg: #0d0d0d;
+  --send-btn-color: #ffffff;
+}
+
+[data-theme="light"] .message-text code {
+  background: #f0f0f0;
+  color: #c0392b;
+}
+
+[data-theme="light"] .message-text pre {
+  background: #f0f0f0;
+}
+
+[data-theme="light"] .message-text pre code {
+  color: #c0392b;
+}
+
+/* ===== Theme Toggle Button ===== */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 10px;
+  transition: background var(--transition), color var(--transition);
+}
+
+.theme-toggle:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* ===== Voice Button ===== */
+.voice-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color var(--transition), background var(--transition);
+}
+
+.voice-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.voice-btn.recording {
+  color: #e05c5c;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
