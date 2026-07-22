@@ -160,9 +160,9 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "llama-3.1-8b-instant",
       messages: sessions[sessionId],
-      max_tokens: 2048,
+      max_tokens: 1024,
       temperature: 0.75,
     });
 
