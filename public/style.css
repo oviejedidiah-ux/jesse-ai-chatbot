@@ -771,3 +771,203 @@ textarea#messageInput::placeholder {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
+/* ===== Voice Chat Button (topbar) ===== */
+.voice-chat-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: auto;
+  transition: background var(--transition);
+}
+
+.voice-chat-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* ===== Voice Chat Overlay ===== */
+.voice-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  padding: 40px 20px;
+}
+
+.voice-overlay.active {
+  display: flex;
+}
+
+.voice-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+
+/* Avatar with rings */
+.voice-avatar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-rings {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+}
+
+.ring1 { width: 80px; height: 80px; }
+.ring2 { width: 100px; height: 100px; }
+.ring3 { width: 120px; height: 120px; }
+
+.voice-avatar-inner.speaking ~ .voice-rings .ring,
+.voice-overlay .voice-avatar-inner.speaking + * .ring {
+  animation: ripple 1.5s infinite;
+}
+
+/* trigger rings when speaking class added to inner */
+.voice-avatar:has(.speaking) .ring1 { animation: ripple 1.5s 0s infinite; }
+.voice-avatar:has(.speaking) .ring2 { animation: ripple 1.5s 0.3s infinite; }
+.voice-avatar:has(.speaking) .ring3 { animation: ripple 1.5s 0.6s infinite; }
+
+@keyframes ripple {
+  0%   { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+
+.voice-avatar-inner {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.2s ease;
+}
+
+.voice-avatar-inner.speaking {
+  animation: avatarPulse 0.8s infinite alternate;
+}
+
+@keyframes avatarPulse {
+  from { transform: scale(1); }
+  to   { transform: scale(1.08); }
+}
+
+.voice-ai-name {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.voice-status {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  min-height: 20px;
+}
+
+.voice-transcript {
+  font-size: 15px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  min-height: 52px;
+  width: 100%;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.voice-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.voice-mic-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+  box-shadow: 0 4px 20px rgba(16, 163, 127, 0.4);
+}
+
+.voice-mic-btn:hover {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+
+.voice-mic-btn.listening {
+  background: #e05c5c;
+  box-shadow: 0 4px 20px rgba(224, 92, 92, 0.5);
+  animation: pulse 1s infinite;
+}
+
+.voice-end-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.voice-end-btn:hover {
+  background: #e05c5c20;
+  color: #e05c5c;
+  border-color: #e05c5c;
+}

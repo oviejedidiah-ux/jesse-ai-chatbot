@@ -42,9 +42,14 @@ const inputHint = document.getElementById("inputHint");
 const nameModal = document.getElementById("nameModal");
 const aiNameInput = document.getElementById("aiNameInput");
 const saveNameBtn = document.getElementById("saveNameBtn");
-const themeToggle = document.getElementById("themeToggle");
-const themeIcon = document.getElementById("themeIcon");
-const themeText = document.getElementById("themeText");
+const voiceChatBtn = document.getElementById("voiceChatBtn");
+const voiceOverlay = document.getElementById("voiceOverlay");
+const voiceMicBtn = document.getElementById("voiceMicBtn");
+const voiceEndBtn = document.getElementById("voiceEndBtn");
+const voiceStatus = document.getElementById("voiceStatus");
+const voiceTranscript = document.getElementById("voiceTranscript");
+const voiceAiName = document.getElementById("voiceAiName");
+const voiceAvatarInner = document.getElementById("voiceAvatarInner");
 
 // ===== Relationship Profile =====
 function getProfile() {
@@ -528,7 +533,178 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
   });
 });
 
-// ===== Theme toggle =====
+const themeToggle = document.getElementById("themeToggle");
+const themeIcon = document.getElementById("themeIcon");
+const themeText = document.getElementById("themeText");
+
+// ===== Voice Chat Mode =====
+let voiceChatActive = false;
+let voiceRecognition = null;
+let voiceIsListening = false;
+let isSpeaking = false;
+
+function startVoiceChat() {
+  if (!("speechSynthesis" in window)) {
+    alert("Your browser doesn't support text-to-speech. Try Chrome or Edge.");
+    return;
+  }
+  voiceChatActive = true;
+  voiceOverlay.classList.add("active");
+  voiceAiName.textContent = aiName;
+  voiceAvatarInner.textContent = aiName.charAt(0).toUpperCase();
+  voiceAvatarInner.style.background = MOODS[currentMood]?.color || MOODS.neutral.color;
+  setVoiceStatus("Tap the mic to start talking");
+}
+
+function endVoiceChat() {
+  voiceChatActive = false;
+  voiceOverlay.classList.remove("active");
+  stopVoiceListening();
+  window.speechSynthesis.cancel();
+  isSpeaking = false;
+  voiceMicBtn.classList.remove("listening");
+}
+
+function setVoiceStatus(text) {
+  voiceStatus.textContent = text;
+}
+
+function startVoiceListening() {
+  if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+    setVoiceStatus("Speech recognition not supported. Try Chrome or Edge.");
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  voiceRecognition = new SR();
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = true;
+  voiceRecognition.lang = "en-US";
+
+  voiceIsListening = true;
+  voiceMicBtn.classList.add("listening");
+  setVoiceStatus("Listening...");
+  voiceTranscript.textContent = "";
+
+  voiceRecognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join("");
+    voiceTranscript.textContent = transcript;
+  };
+
+  voiceRecognition.onend = async () => {
+    voiceIsListening = false;
+    voiceMicBtn.classList.remove("listening");
+    const text = voiceTranscript.textContent.trim();
+    if (text) {
+      setVoiceStatus("Got it! Thinking...");
+      await sendVoiceMessage(text);
+    } else {
+      setVoiceStatus("Didn't catch that. Tap mic to try again.");
+    }
+  };
+
+  voiceRecognition.onerror = () => {
+    voiceIsListening = false;
+    voiceMicBtn.classList.remove("listening");
+    setVoiceStatus("Couldn't hear you. Tap mic to try again.");
+  };
+
+  voiceRecognition.start();
+}
+
+function stopVoiceListening() {
+  if (voiceRecognition) {
+    voiceRecognition.stop();
+    voiceRecognition = null;
+  }
+  voiceIsListening = false;
+  voiceMicBtn.classList.remove("listening");
+}
+
+async function sendVoiceMessage(text) {
+  // Also show in chat
+  welcomeScreen.style.display = "none";
+  const chats = getAllChats();
+  const isFirst = !chats[currentChatId] || chats[currentChatId].messages.length === 0;
+  saveMessage(currentChatId, { role: "user", text }, isFirst ? text : null);
+  renderMessage("user", text);
+  if (isFirst) renderSidebar();
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, sessionId, profile: getProfile(), aiName }),
+    });
+    const data = await res.json();
+    const reply = res.ok ? data.reply : "Sorry, something went wrong.";
+    if (res.ok) updateProfile(data.mood, data.detectedName, data.detectedInterests);
+    if (res.ok && data.mood) updateMood(data.mood);
+    saveMessage(currentChatId, { role: "assistant", text: reply });
+    renderMessage("assistant", reply);
+
+    // Speak the reply
+    speakReply(reply);
+  } catch {
+    setVoiceStatus("Network error. Please try again.");
+  }
+}
+
+function speakReply(text) {
+  // Strip markdown for speech
+  const clean = text
+    .replace(/#{1,6}\s/g, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/`{1,3}[^`]*`{1,3}/g, "")
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/\n+/g, " ")
+    .trim();
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  utterance.volume = 1.0;
+
+  // Pick a natural voice if available
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v =>
+    v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Neural")
+  );
+  if (preferred) utterance.voice = preferred;
+
+  isSpeaking = true;
+  voiceAvatarInner.classList.add("speaking");
+  setVoiceStatus(`${aiName} is speaking...`);
+  voiceTranscript.textContent = "";
+
+  utterance.onend = () => {
+    isSpeaking = false;
+    voiceAvatarInner.classList.remove("speaking");
+    if (voiceChatActive) {
+      setVoiceStatus("Tap the mic to reply");
+    }
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// Voice chat button events
+voiceChatBtn.addEventListener("click", startVoiceChat);
+voiceEndBtn.addEventListener("click", endVoiceChat);
+
+voiceMicBtn.addEventListener("click", () => {
+  if (isSpeaking) {
+    window.speechSynthesis.cancel();
+    isSpeaking = false;
+    voiceAvatarInner.classList.remove("speaking");
+  }
+  if (voiceIsListening) {
+    stopVoiceListening();
+  } else {
+    startVoiceListening();
+  }
+});
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   localStorage.setItem(THEME_KEY, theme);
