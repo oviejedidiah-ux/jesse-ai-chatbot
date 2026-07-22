@@ -6,12 +6,12 @@ const PROFILE_KEY = "jesse_ai_profile";
 
 // ===== Mood config =====
 const MOODS = {
-  happy:     { label: "Happy 😊",     color: "#10a37f" },
-  sad:       { label: "Sad 💙",        color: "#5b8dd9" },
-  angry:     { label: "Angry 😡",      color: "#e05c5c" },
-  anxious:   { label: "Anxious 😰",    color: "#e0a83a" },
-  surprised: { label: "Surprised 😮",  color: "#a855f7" },
-  neutral:   { label: "Neutral 😐",    color: "#8e8ea0" },
+  happy:     { label: "Happy 😊",    color: "#10a37f" },
+  sad:       { label: "Sad 💙",       color: "#5b8dd9" },
+  angry:     { label: "Angry 😡",     color: "#e05c5c" },
+  anxious:   { label: "Anxious 😰",   color: "#e0a83a" },
+  surprised: { label: "Surprised 😮", color: "#a855f7" },
+  neutral:   { label: "Neutral 😐",   color: "#8e8ea0" },
 };
 
 // ===== State =====
@@ -25,7 +25,6 @@ let currentMood = "neutral";
 const messagesEl = document.getElementById("messages");
 const messagesContainer = document.getElementById("messagesContainer");
 const welcomeScreen = document.getElementById("welcomeScreen");
-const welcomeTitle = document.getElementById("welcomeTitle");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const voiceBtn = document.getElementById("voiceBtn");
@@ -42,17 +41,15 @@ const inputHint = document.getElementById("inputHint");
 const nameModal = document.getElementById("nameModal");
 const aiNameInput = document.getElementById("aiNameInput");
 const saveNameBtn = document.getElementById("saveNameBtn");
-// ===== Theme toggle =====
+const themeToggle = document.getElementById("themeToggle");
+const themeIcon = document.getElementById("themeIcon");
+const themeText = document.getElementById("themeText");
 
 // ===== Relationship Profile =====
 function getProfile() {
   try {
     return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {
-      trustLevel: 1,
-      messageCount: 0,
-      userName: null,
-      interests: [],
-      moodHistory: [],
+      trustLevel: 1, messageCount: 0, userName: null, interests: [], moodHistory: [],
     };
   } catch {
     return { trustLevel: 1, messageCount: 0, userName: null, interests: [], moodHistory: [] };
@@ -65,42 +62,27 @@ function saveProfile(profile) {
 
 function updateProfile(mood, detectedName, detectedInterests) {
   const profile = getProfile();
-
-  // Increment message count
   profile.messageCount = (profile.messageCount || 0) + 1;
-
-  // Update trust level based on message count
   if (profile.messageCount >= 50) profile.trustLevel = 5;
   else if (profile.messageCount >= 25) profile.trustLevel = 4;
   else if (profile.messageCount >= 10) profile.trustLevel = 3;
   else if (profile.messageCount >= 4) profile.trustLevel = 2;
   else profile.trustLevel = 1;
-
-  // Save user name if detected
-  if (detectedName && !profile.userName) {
-    profile.userName = detectedName;
-  }
-
-  // Add new interests (avoid duplicates, max 15)
+  if (detectedName && !profile.userName) profile.userName = detectedName;
   if (detectedInterests && detectedInterests.length > 0) {
-    detectedInterests.forEach((i) => {
-      if (!profile.interests.includes(i)) profile.interests.push(i);
-    });
+    detectedInterests.forEach((i) => { if (!profile.interests.includes(i)) profile.interests.push(i); });
     if (profile.interests.length > 15) profile.interests = profile.interests.slice(-15);
   }
-
-  // Track mood history (max 10)
   if (mood && mood !== "neutral") {
     profile.moodHistory = profile.moodHistory || [];
     profile.moodHistory.push(mood);
     if (profile.moodHistory.length > 10) profile.moodHistory = profile.moodHistory.slice(-10);
   }
-
   saveProfile(profile);
   return profile;
 }
 
-// ===== Apply AI name across UI =====
+// ===== Apply AI name =====
 function applyAiName(name) {
   aiName = name;
   sidebarName.textContent = name;
@@ -128,11 +110,9 @@ saveNameBtn.addEventListener("click", () => {
   messageInput.focus();
 });
 
-aiNameInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") saveNameBtn.click();
-});
+aiNameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") saveNameBtn.click(); });
 
-// ===== Mood update =====
+// ===== Mood =====
 function updateMood(mood) {
   if (!mood || !MOODS[mood]) return;
   currentMood = mood;
@@ -142,22 +122,80 @@ function updateMood(mood) {
   moodDot.style.boxShadow = `0 0 8px ${m.color}`;
 }
 
-// ===== Storage helpers =====
-function getAllChats() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  } catch {
-    return {};
+// ===== Theme =====
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+  if (theme === "light") {
+    themeIcon.textContent = "🌙";
+    themeText.textContent = "Dark mode";
+  } else {
+    themeIcon.textContent = "☀️";
+    themeText.textContent = "Light mode";
   }
+}
+
+themeToggle.addEventListener("click", () => {
+  const current = document.documentElement.getAttribute("data-theme");
+  applyTheme(current === "dark" ? "light" : "dark");
+});
+
+// ===== Voice input (mic to text only) =====
+let isRecording = false;
+let recognition = null;
+
+if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
+
+  recognition.onstart = () => {
+    isRecording = true;
+    voiceBtn.classList.add("recording");
+    voiceBtn.title = "Listening... click to stop";
+  };
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map((r) => r[0].transcript).join("");
+    messageInput.value = transcript;
+    messageInput.style.height = "auto";
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
+    sendBtn.disabled = transcript.trim() === "";
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    voiceBtn.classList.remove("recording");
+    voiceBtn.title = "Speak your message";
+    if (messageInput.value.trim()) sendBtn.disabled = false;
+  };
+
+  recognition.onerror = () => {
+    isRecording = false;
+    voiceBtn.classList.remove("recording");
+  };
+
+  voiceBtn.addEventListener("click", () => {
+    if (isRecording) recognition.stop();
+    else recognition.start();
+  });
+} else {
+  voiceBtn.style.display = "none";
+}
+
+// ===== Storage =====
+function getAllChats() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch { return {}; }
 }
 
 function saveAllChats(chats) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
 }
 
-function getChat(id) {
-  return getAllChats()[id] || null;
-}
+function getChat(id) { return getAllChats()[id] || null; }
 
 function deleteChatById(id) {
   const chats = getAllChats();
@@ -165,7 +203,7 @@ function deleteChatById(id) {
   saveAllChats(chats);
 }
 
-// ===== Render sidebar =====
+// ===== Sidebar =====
 function renderSidebar() {
   chatHistoryEl.innerHTML = "";
   const chats = getAllChats();
@@ -182,7 +220,6 @@ function renderSidebar() {
     const item = document.createElement("div");
     item.classList.add("session-item");
     if (chat.id === currentChatId) item.classList.add("active");
-
     item.innerHTML = `
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -192,9 +229,7 @@ function renderSidebar() {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
-      </button>
-    `;
-
+      </button>`;
     item.addEventListener("click", (e) => {
       if (e.target.closest(".delete-chat-btn")) {
         e.stopPropagation();
@@ -206,7 +241,6 @@ function renderSidebar() {
       loadChat(chat.id);
       if (window.innerWidth <= 768) sidebar.classList.remove("open");
     });
-
     chatHistoryEl.appendChild(item);
   });
 }
@@ -215,30 +249,24 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// ===== Load a past chat =====
+// ===== Load chat =====
 function loadChat(id) {
   const chat = getChat(id);
   if (!chat) return;
-
   currentChatId = id;
   sessionId = id;
   messagesEl.innerHTML = "";
   welcomeScreen.style.display = "none";
-
   chat.messages.forEach((msg) => {
-    if (msg.type === "image") {
-      renderImageMessage(msg.prompt, msg.imageUrl);
-    } else {
-      renderMessage(msg.role, msg.text);
-    }
+    if (msg.type === "image") renderImageMessage(msg.prompt, msg.imageUrl);
+    else renderMessage(msg.role, msg.text);
   });
-
   renderSidebar();
   scrollToBottom();
   messageInput.focus();
 }
 
-// ===== Begin a new chat =====
+// ===== New chat =====
 function beginNewChat() {
   currentChatId = crypto.randomUUID();
   sessionId = currentChatId;
@@ -249,17 +277,15 @@ function beginNewChat() {
   sendBtn.disabled = true;
   updateMood("neutral");
   renderSidebar();
-
   fetch("/api/reset", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId }),
   }).catch(() => {});
-
   messageInput.focus();
 }
 
-// ===== Save message to storage =====
+// ===== Save message =====
 function saveMessage(chatId, msgObj, firstUserText) {
   const chats = getAllChats();
   if (!chats[chatId]) {
@@ -277,21 +303,15 @@ function saveMessage(chatId, msgObj, firstUserText) {
   saveAllChats(chats);
 }
 
-// ===== Detect image requests =====
+// ===== Image detection =====
 function isImageRequest(text) {
   const lower = text.toLowerCase();
   return (
-    lower.includes("generate an image") ||
-    lower.includes("generate a image") ||
-    lower.includes("create an image") ||
-    lower.includes("create a image") ||
-    lower.includes("make an image") ||
-    lower.includes("make a image") ||
-    lower.includes("draw me") ||
-    lower.includes("draw a ") ||
-    lower.includes("draw an ") ||
-    lower.includes("show me a picture") ||
-    lower.includes("generate a picture") ||
+    lower.includes("generate an image") || lower.includes("generate a image") ||
+    lower.includes("create an image") || lower.includes("create a image") ||
+    lower.includes("make an image") || lower.includes("make a image") ||
+    lower.includes("draw me") || lower.includes("draw a ") || lower.includes("draw an ") ||
+    lower.includes("show me a picture") || lower.includes("generate a picture") ||
     /^(generate|create|draw|make)\s+.*(image|picture|photo|illustration)/i.test(text)
   );
 }
@@ -355,7 +375,7 @@ async function sendMessage() {
       removeTyping(typingId);
       const reply = res.ok ? data.reply : `Sorry, something went wrong: ${data.error}`;
       if (res.ok) {
-        const profile = updateProfile(data.mood, data.detectedName, data.detectedInterests);
+        updateProfile(data.mood, data.detectedName, data.detectedInterests);
         updateMood(data.mood);
       }
       saveMessage(currentChatId, { role: "assistant", text: reply });
@@ -371,18 +391,16 @@ async function sendMessage() {
   messageInput.focus();
 }
 
-// ===== Render a text message =====
+// ===== Render text message =====
 function renderMessage(role, text) {
   const wrapper = document.createElement("div");
   wrapper.classList.add("message", role);
 
   const avatar = document.createElement("div");
   avatar.classList.add("message-avatar");
-
   if (role === "user") {
     avatar.textContent = "U";
   } else {
-    // AI avatar shows mood color
     avatar.textContent = "AI";
     avatar.style.background = MOODS[currentMood]?.color || MOODS.neutral.color;
   }
@@ -396,11 +414,8 @@ function renderMessage(role, text) {
 
   const textEl = document.createElement("div");
   textEl.classList.add("message-text");
-  if (role === "assistant") {
-    textEl.innerHTML = marked.parse(text);
-  } else {
-    textEl.textContent = text;
-  }
+  if (role === "assistant") textEl.innerHTML = marked.parse(text);
+  else textEl.textContent = text;
 
   content.appendChild(roleLabel);
   content.appendChild(textEl);
@@ -410,7 +425,7 @@ function renderMessage(role, text) {
   scrollToBottom();
 }
 
-// ===== Render an image message =====
+// ===== Render image message =====
 function renderImageMessage(prompt, imageUrl) {
   const wrapper = document.createElement("div");
   wrapper.classList.add("message", "assistant");
@@ -510,9 +525,7 @@ menuToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
 
 document.addEventListener("click", (e) => {
   if (window.innerWidth <= 768 && sidebar.classList.contains("open")) {
-    if (!sidebar.contains(e.target) && e.target !== menuToggle) {
-      sidebar.classList.remove("open");
-    }
+    if (!sidebar.contains(e.target) && e.target !== menuToggle) sidebar.classList.remove("open");
   }
 });
 
@@ -525,78 +538,6 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
     sendMessage();
   });
 });
-
-const themeToggle = document.getElementById("themeToggle");
-const themeIcon = document.getElementById("themeIcon");
-const themeText = document.getElementById("themeText");
-});
-function applyTheme(theme) {
-  document.documentElement.setAttribute("data-theme", theme);
-  localStorage.setItem(THEME_KEY, theme);
-  if (theme === "light") {
-    themeIcon.textContent = "🌙";
-    themeText.textContent = "Dark mode";
-  } else {
-    themeIcon.textContent = "☀️";
-    themeText.textContent = "Light mode";
-  }
-}
-
-themeToggle.addEventListener("click", () => {
-  const current = document.documentElement.getAttribute("data-theme");
-  applyTheme(current === "dark" ? "light" : "dark");
-});
-
-// ===== Voice Input =====
-let isRecording = false;
-let recognition = null;
-
-if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SpeechRecognition();
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.lang = "en-US";
-
-  recognition.onstart = () => {
-    isRecording = true;
-    voiceBtn.classList.add("recording");
-    voiceBtn.title = "Listening... click to stop";
-  };
-
-  recognition.onresult = (e) => {
-    const transcript = Array.from(e.results)
-      .map((r) => r[0].transcript)
-      .join("");
-    messageInput.value = transcript;
-    messageInput.style.height = "auto";
-    messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
-    sendBtn.disabled = transcript.trim() === "";
-  };
-
-  recognition.onend = () => {
-    isRecording = false;
-    voiceBtn.classList.remove("recording");
-    voiceBtn.title = "Speak your message";
-    if (messageInput.value.trim()) sendBtn.disabled = false;
-  };
-
-  recognition.onerror = () => {
-    isRecording = false;
-    voiceBtn.classList.remove("recording");
-  };
-
-  voiceBtn.addEventListener("click", () => {
-    if (isRecording) {
-      recognition.stop();
-    } else {
-      recognition.start();
-    }
-  });
-} else {
-  // Browser doesn't support speech recognition
-  voiceBtn.style.display = "none";
-}
 
 // ===== Init =====
 window.addEventListener("load", () => {
