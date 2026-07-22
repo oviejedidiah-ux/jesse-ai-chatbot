@@ -1,6 +1,11 @@
+// ===== Constants =====
+const STORAGE_KEY = "jesse_ai_chats";
+
 // ===== State =====
-const sessionId = crypto.randomUUID();
+let sessionId = crypto.randomUUID();
 let isLoading = false;
+let currentChatId = null;
+let chats = loadChatsFromStorage();
 
 // ===== DOM Elements =====
 const messagesEl = document.getElementById("messages");
@@ -11,7 +16,143 @@ const sendBtn = document.getElementById("sendBtn");
 const newChatBtn = document.getElementById("newChatBtn");
 const menuToggle = document.getElementById("menuToggle");
 const sidebar = document.querySelector(".sidebar");
-const sessionIndicator = document.getElementById("sessionIndicator");
+const chatHistoryEl = document.getElementById("chatHistory");
+
+// ===== Storage =====
+function loadChatsFromStorage() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveChatsToStorage() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+}
+
+function createNewChat() {
+  const id = crypto.randomUUID();
+  chats[id] = {
+    id,
+    title: "New conversation",
+    messages: [],
+    createdAt: Date.now(),
+  };
+  saveChatsToStorage();
+  return id;
+}
+
+function saveChatMessage(chatId, role, text) {
+  if (!chats[chatId]) return;
+  chats[chatId].messages.push({ role, text, timestamp: Date.now() });
+  saveChatsToStorage();
+}
+
+function updateChatTitle(chatId, title) {
+  if (!chats[chatId]) return;
+  chats[chatId].title = title.length > 32 ? title.slice(0, 32) + "…" : title;
+  saveChatsToStorage();
+}
+
+// ===== Render Sidebar History =====
+function renderChatHistory() {
+  chatHistoryEl.innerHTML = "";
+
+  const sorted = Object.values(chats).sort((a, b) => b.createdAt - a.createdAt);
+
+  if (sorted.length === 0) {
+    chatHistoryEl.innerHTML = `<p class="no-history">No saved chats yet</p>`;
+    return;
+  }
+
+  sorted.forEach((chat) => {
+    const item = document.createElement("div");
+    item.classList.add("session-item");
+    if (chat.id === currentChatId) item.classList.add("active");
+
+    item.innerHTML = `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span>${chat.title}</span>
+      <button class="delete-chat-btn" data-id="${chat.id}" title="Delete chat">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    `;
+
+    // Load chat on click
+    item.addEventListener("click", (e) => {
+      if (e.target.closest(".delete-chat-btn")) return;
+      loadChat(chat.id);
+      if (window.innerWidth <= 768) sidebar.classList.remove("open");
+    });
+
+    // Delete chat
+    item.querySelector(".delete-chat-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteChat(chat.id);
+    });
+
+    chatHistoryEl.appendChild(item);
+  });
+}
+
+// ===== Load a saved chat =====
+function loadChat(chatId) {
+  if (!chats[chatId]) return;
+
+  currentChatId = chatId;
+  sessionId = chatId; // reuse chatId as sessionId for server continuity
+
+  messagesEl.innerHTML = "";
+  welcomeScreen.style.display = "none";
+
+  chats[chatId].messages.forEach((msg) => {
+    appendMessage(msg.role, msg.text, false); // false = don't save again
+  });
+
+  renderChatHistory();
+  scrollToBottom();
+}
+
+// ===== Delete a chat =====
+function deleteChat(chatId) {
+  delete chats[chatId];
+  saveChatsToStorage();
+
+  // If deleted current chat, start fresh
+  if (chatId === currentChatId) {
+    startNewChat();
+  } else {
+    renderChatHistory();
+  }
+}
+
+// ===== Start a new chat =====
+function startNewChat() {
+  currentChatId = createNewChat();
+  sessionId = currentChatId;
+
+  messagesEl.innerHTML = "";
+  welcomeScreen.style.display = "";
+  messageInput.value = "";
+  messageInput.style.height = "auto";
+  sendBtn.disabled = true;
+
+  renderChatHistory();
+
+  // Tell server to clear session
+  fetch("/api/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  }).catch(() => {});
+
+  messageInput.focus();
+}
 
 // ===== Auto-resize textarea =====
 messageInput.addEventListener("input", () => {
@@ -34,8 +175,7 @@ sendBtn.addEventListener("click", sendMessage);
 // ===== Suggestion chips =====
 document.querySelectorAll(".suggestion-chip").forEach((chip) => {
   chip.addEventListener("click", () => {
-    const prompt = chip.dataset.prompt;
-    messageInput.value = prompt;
+    messageInput.value = chip.dataset.prompt;
     messageInput.style.height = "auto";
     messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
     sendBtn.disabled = false;
@@ -43,15 +183,17 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
   });
 });
 
-// ===== New Chat =====
-newChatBtn.addEventListener("click", resetChat);
+// ===== New Chat button =====
+newChatBtn.addEventListener("click", () => {
+  startNewChat();
+  if (window.innerWidth <= 768) sidebar.classList.remove("open");
+});
 
-// ===== Sidebar toggle (mobile) =====
+// ===== Sidebar toggle =====
 menuToggle.addEventListener("click", () => {
   sidebar.classList.toggle("open");
 });
 
-// Close sidebar when clicking outside on mobile
 document.addEventListener("click", (e) => {
   if (window.innerWidth <= 768 && sidebar.classList.contains("open")) {
     if (!sidebar.contains(e.target) && e.target !== menuToggle) {
@@ -65,25 +207,24 @@ async function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || isLoading) return;
 
-  // Hide welcome screen on first message
-  if (welcomeScreen.style.display !== "none") {
-    welcomeScreen.style.display = "none";
+  // Hide welcome screen
+  welcomeScreen.style.display = "none";
+
+  // Update chat title with first message
+  if (chats[currentChatId] && chats[currentChatId].messages.length === 0) {
+    updateChatTitle(currentChatId, text);
+    renderChatHistory();
   }
 
-  // Add user message to UI
+  // Add user message
   appendMessage("user", text);
+  saveChatMessage(currentChatId, "user", text);
 
   // Clear input
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendBtn.disabled = true;
   isLoading = true;
-
-  // Update sidebar session label
-  if (sessionIndicator.querySelector("span").textContent === "New conversation") {
-    sessionIndicator.querySelector("span").textContent =
-      text.length > 30 ? text.slice(0, 30) + "…" : text;
-  }
 
   // Show typing indicator
   const typingId = showTyping();
@@ -100,6 +241,7 @@ async function sendMessage() {
 
     if (res.ok) {
       appendMessage("assistant", data.reply);
+      saveChatMessage(currentChatId, "assistant", data.reply);
     } else {
       appendMessage("assistant", `Sorry, something went wrong: ${data.error}`);
     }
@@ -114,7 +256,7 @@ async function sendMessage() {
 }
 
 // ===== Append a message bubble =====
-function appendMessage(role, text) {
+function appendMessage(role, text, save = true) {
   const wrapper = document.createElement("div");
   wrapper.classList.add("message", role);
 
@@ -133,10 +275,8 @@ function appendMessage(role, text) {
   textEl.classList.add("message-text");
 
   if (role === "assistant") {
-    // Render markdown for assistant messages
     textEl.innerHTML = marked.parse(text);
   } else {
-    // Plain text for user messages (escape HTML)
     textEl.textContent = text;
   }
 
@@ -198,28 +338,8 @@ function scrollToBottom() {
   });
 }
 
-// ===== Reset / New Chat =====
-async function resetChat() {
-  // Reset UI
-  messagesEl.innerHTML = "";
-  welcomeScreen.style.display = "";
-  messageInput.value = "";
-  messageInput.style.height = "auto";
-  sendBtn.disabled = true;
-  sessionIndicator.querySelector("span").textContent = "New conversation";
-
-  // Tell server to clear session history
-  try {
-    await fetch("/api/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    });
-  } catch (_) {}
-
+// ===== Init =====
+window.addEventListener("load", () => {
+  startNewChat();
   messageInput.focus();
-  if (window.innerWidth <= 768) sidebar.classList.remove("open");
-}
-
-// Focus input on load
-window.addEventListener("load", () => messageInput.focus());
+});

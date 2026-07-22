@@ -522,3 +522,34 @@ textarea#messageInput::placeholder {
     padding: 10px 12px 14px;
   }
 }
+
+/* ===== Chat History ===== */
+.delete-chat-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+.session-item:hover .delete-chat-btn {
+  opacity: 1;
+}
+
+.delete-chat-btn:hover {
+  color: #e05c5c;
+}
+
+.no-history {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  text-align: center;
+}
