@@ -1,21 +1,86 @@
 // ===== Constants =====
 const STORAGE_KEY = "jesse_ai_chats";
+const AI_NAME_KEY = "jesse_ai_name";
+
+// ===== Mood config =====
+const MOODS = {
+  happy:     { label: "Happy 😊",     color: "#10a37f" },
+  sad:       { label: "Sad 💙",        color: "#5b8dd9" },
+  angry:     { label: "Angry 😡",      color: "#e05c5c" },
+  anxious:   { label: "Anxious 😰",    color: "#e0a83a" },
+  surprised: { label: "Surprised 😮",  color: "#a855f7" },
+  neutral:   { label: "Neutral 😐",    color: "#8e8ea0" },
+};
 
 // ===== State =====
 let isLoading = false;
 let currentChatId = null;
 let sessionId = null;
+let aiName = localStorage.getItem(AI_NAME_KEY) || "Jesse AI";
+let currentMood = "neutral";
 
 // ===== DOM Elements =====
 const messagesEl = document.getElementById("messages");
 const messagesContainer = document.getElementById("messagesContainer");
 const welcomeScreen = document.getElementById("welcomeScreen");
+const welcomeTitle = document.getElementById("welcomeTitle");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const newChatBtn = document.getElementById("newChatBtn");
 const menuToggle = document.getElementById("menuToggle");
 const sidebar = document.querySelector(".sidebar");
 const chatHistoryEl = document.getElementById("chatHistory");
+const moodDot = document.getElementById("moodDot");
+const moodLabel = document.getElementById("moodLabel");
+const sidebarName = document.getElementById("sidebarName");
+const topbarName = document.getElementById("topbarName");
+const pageTitle = document.getElementById("pageTitle");
+const inputHint = document.getElementById("inputHint");
+const nameModal = document.getElementById("nameModal");
+const aiNameInput = document.getElementById("aiNameInput");
+const saveNameBtn = document.getElementById("saveNameBtn");
+
+// ===== Apply AI name across UI =====
+function applyAiName(name) {
+  aiName = name;
+  sidebarName.textContent = name;
+  topbarName.textContent = `${name} · Groq`;
+  pageTitle.textContent = name;
+  inputHint.textContent = `${name} can make mistakes. Verify important information.`;
+}
+
+// ===== Name modal =====
+function checkNameSetup() {
+  const saved = localStorage.getItem(AI_NAME_KEY);
+  if (!saved) {
+    nameModal.classList.add("active");
+    aiNameInput.focus();
+  } else {
+    applyAiName(saved);
+  }
+}
+
+saveNameBtn.addEventListener("click", () => {
+  const name = aiNameInput.value.trim() || "Jesse AI";
+  localStorage.setItem(AI_NAME_KEY, name);
+  applyAiName(name);
+  nameModal.classList.remove("active");
+  messageInput.focus();
+});
+
+aiNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveNameBtn.click();
+});
+
+// ===== Mood update =====
+function updateMood(mood) {
+  if (!mood || !MOODS[mood]) return;
+  currentMood = mood;
+  const m = MOODS[mood];
+  moodDot.style.background = m.color;
+  moodLabel.textContent = `Mood: ${m.label}`;
+  moodDot.style.boxShadow = `0 0 8px ${m.color}`;
+}
 
 // ===== Storage helpers =====
 function getAllChats() {
@@ -102,9 +167,9 @@ function loadChat(id) {
 
   chat.messages.forEach((msg) => {
     if (msg.type === "image") {
-      renderImageMessage(msg.prompt, msg.imageUrl, false);
+      renderImageMessage(msg.prompt, msg.imageUrl);
     } else {
-      renderMessage(msg.role, msg.text, false);
+      renderMessage(msg.role, msg.text);
     }
   });
 
@@ -122,6 +187,7 @@ function beginNewChat() {
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendBtn.disabled = true;
+  updateMood("neutral");
   renderSidebar();
 
   fetch("/api/reset", {
@@ -133,7 +199,7 @@ function beginNewChat() {
   messageInput.focus();
 }
 
-// ===== Save a message to storage =====
+// ===== Save message to storage =====
 function saveMessage(chatId, msgObj, firstUserText) {
   const chats = getAllChats();
   if (!chats[chatId]) {
@@ -187,9 +253,8 @@ async function sendMessage() {
   const chats = getAllChats();
   const isFirst = !chats[currentChatId] || chats[currentChatId].messages.length === 0;
 
-  // Save and render user message
   saveMessage(currentChatId, { role: "user", text }, isFirst ? text : null);
-  renderMessage("user", text, false);
+  renderMessage("user", text);
   if (isFirst) renderSidebar();
 
   messageInput.value = "";
@@ -211,13 +276,13 @@ async function sendMessage() {
       removeTyping(typingId);
       if (res.ok) {
         saveMessage(currentChatId, { type: "image", prompt, imageUrl: data.imageUrl });
-        renderImageMessage(prompt, data.imageUrl, false);
+        renderImageMessage(prompt, data.imageUrl);
       } else {
-        renderMessage("assistant", `Couldn't generate the image: ${data.error}`, false);
+        renderMessage("assistant", `Couldn't generate the image: ${data.error}`);
       }
     } catch {
       removeTyping(typingId);
-      renderMessage("assistant", "Network error. Couldn't generate the image.", false);
+      renderMessage("assistant", "Network error. Couldn't generate the image.");
     }
   } else {
     try {
@@ -229,11 +294,12 @@ async function sendMessage() {
       const data = await res.json();
       removeTyping(typingId);
       const reply = res.ok ? data.reply : `Sorry, something went wrong: ${data.error}`;
+      if (res.ok && data.mood) updateMood(data.mood);
       saveMessage(currentChatId, { role: "assistant", text: reply });
-      renderMessage("assistant", reply, false);
+      renderMessage("assistant", reply);
     } catch {
       removeTyping(typingId);
-      renderMessage("assistant", "Network error. Please check your connection.", false);
+      renderMessage("assistant", "Network error. Please check your connection.");
     }
   }
 
@@ -249,14 +315,21 @@ function renderMessage(role, text) {
 
   const avatar = document.createElement("div");
   avatar.classList.add("message-avatar");
-  avatar.textContent = role === "user" ? "U" : "AI";
+
+  if (role === "user") {
+    avatar.textContent = "U";
+  } else {
+    // AI avatar shows mood color
+    avatar.textContent = "AI";
+    avatar.style.background = MOODS[currentMood]?.color || MOODS.neutral.color;
+  }
 
   const content = document.createElement("div");
   content.classList.add("message-content");
 
   const roleLabel = document.createElement("div");
   roleLabel.classList.add("message-role");
-  roleLabel.textContent = role === "user" ? "You" : "Jesse AI";
+  roleLabel.textContent = role === "user" ? "You" : aiName;
 
   const textEl = document.createElement("div");
   textEl.classList.add("message-text");
@@ -282,20 +355,21 @@ function renderImageMessage(prompt, imageUrl) {
   const avatar = document.createElement("div");
   avatar.classList.add("message-avatar");
   avatar.textContent = "AI";
+  avatar.style.background = MOODS[currentMood]?.color || MOODS.neutral.color;
 
   const content = document.createElement("div");
   content.classList.add("message-content");
 
   const roleLabel = document.createElement("div");
   roleLabel.classList.add("message-role");
-  roleLabel.textContent = "Jesse AI";
+  roleLabel.textContent = aiName;
 
   const textEl = document.createElement("div");
   textEl.classList.add("message-text");
   textEl.innerHTML = `<p>Here's your image of <strong>${escapeHtml(prompt)}</strong>:</p>
     <div class="image-container">
       <img src="${imageUrl}" alt="${escapeHtml(prompt)}" class="generated-image" loading="lazy" />
-      <a href="${imageUrl}" download="jesse-ai-image.jpg" class="download-btn">Download</a>
+      <a href="${imageUrl}" download="ai-image.jpg" class="download-btn">Download</a>
     </div>`;
 
   content.appendChild(roleLabel);
@@ -316,13 +390,14 @@ function showTyping() {
   const avatar = document.createElement("div");
   avatar.classList.add("message-avatar");
   avatar.textContent = "AI";
+  avatar.style.background = MOODS[currentMood]?.color || MOODS.neutral.color;
 
   const content = document.createElement("div");
   content.classList.add("message-content");
 
   const roleLabel = document.createElement("div");
   roleLabel.classList.add("message-role");
-  roleLabel.textContent = "Jesse AI";
+  roleLabel.textContent = aiName;
 
   const dots = document.createElement("div");
   dots.classList.add("typing-indicator");
@@ -390,6 +465,8 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
 
 // ===== Init =====
 window.addEventListener("load", () => {
+  checkNameSetup();
   beginNewChat();
+  updateMood("neutral");
   messageInput.focus();
 });

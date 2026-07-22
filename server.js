@@ -89,13 +89,34 @@ RULES:
     // Add assistant reply to history
     sessions[sessionId].push({ role: "assistant", content: reply });
 
-    res.json({ reply });
+    // Detect mood from user message
+    const mood = detectMood(message);
+
+    res.json({ reply, mood });
   } catch (error) {
     console.error("Groq API error:", error.message);
     console.error("Full error:", JSON.stringify(error, null, 2));
     res.status(500).json({ error: error.message || "Something went wrong. Please try again." });
   }
 });
+
+// Mood detection
+function detectMood(text) {
+  const t = text.toLowerCase();
+
+  const happy = /\b(happy|excited|great|awesome|amazing|love|yay|haha|lol|😊|😂|🎉|wonderful|fantastic|joy|fun|hype|lit|blessed|grateful|glad|thrilled|stoked|pumped)\b/;
+  const sad = /\b(sad|depressed|unhappy|crying|cry|miss|lonely|hurt|heartbreak|broken|upset|down|hopeless|miserable|grief|lost|😢|😭|💔|alone|empty|pain|suffer)\b/;
+  const angry = /\b(angry|mad|furious|hate|annoyed|frustrated|rage|stupid|idiot|dumb|worst|terrible|awful|pissed|irritated|😡|🤬|fed up|sick of)\b/;
+  const anxious = /\b(anxious|nervous|worried|scared|afraid|stress|stressed|overwhelm|panic|fear|anxious|uneasy|tense|dread|😰|😟|help me|can't cope|too much)\b/;
+  const surprised = /\b(wow|omg|oh my|no way|really|seriously|what|whoa|shocking|unbelievable|crazy|insane|😮|😲|mind blown)\b/;
+
+  if (happy.test(t)) return "happy";
+  if (sad.test(t)) return "sad";
+  if (angry.test(t)) return "angry";
+  if (anxious.test(t)) return "anxious";
+  if (surprised.test(t)) return "surprised";
+  return "neutral";
+}
 
 // Reset conversation endpoint
 app.post("/api/reset", (req, res) => {
