@@ -34,13 +34,7 @@ function getChat(id) {
   return getAllChats()[id] || null;
 }
 
-function saveChat(chat) {
-  const chats = getAllChats();
-  chats[chat.id] = chat;
-  saveAllChats(chats);
-}
-
-function deleteChat(id) {
+function deleteChatById(id) {
   const chats = getAllChats();
   delete chats[id];
   saveAllChats(chats);
@@ -49,7 +43,6 @@ function deleteChat(id) {
 // ===== Render sidebar =====
 function renderSidebar() {
   chatHistoryEl.innerHTML = "";
-
   const chats = getAllChats();
   const list = Object.values(chats)
     .filter((c) => c.messages && c.messages.length > 0)
@@ -80,7 +73,9 @@ function renderSidebar() {
     item.addEventListener("click", (e) => {
       if (e.target.closest(".delete-chat-btn")) {
         e.stopPropagation();
-        deleteChatAndRefresh(chat.id);
+        deleteChatById(chat.id);
+        if (chat.id === currentChatId) beginNewChat();
+        else renderSidebar();
         return;
       }
       loadChat(chat.id);
@@ -92,7 +87,7 @@ function renderSidebar() {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // ===== Load a past chat =====
@@ -102,43 +97,33 @@ function loadChat(id) {
 
   currentChatId = id;
   sessionId = id;
-
   messagesEl.innerHTML = "";
   welcomeScreen.style.display = "none";
 
-  chat.messages.forEach((msg) => renderMessage(msg.role, msg.text));
+  chat.messages.forEach((msg) => {
+    if (msg.type === "image") {
+      renderImageMessage(msg.prompt, msg.imageUrl, false);
+    } else {
+      renderMessage(msg.role, msg.text, false);
+    }
+  });
 
   renderSidebar();
   scrollToBottom();
   messageInput.focus();
 }
 
-// ===== Delete chat =====
-function deleteChatAndRefresh(id) {
-  deleteChat(id);
-  if (id === currentChatId) {
-    beginNewChat();
-  } else {
-    renderSidebar();
-  }
-}
-
 // ===== Begin a new chat =====
 function beginNewChat() {
-  // Generate fresh IDs
   currentChatId = crypto.randomUUID();
   sessionId = currentChatId;
-
-  // Clear UI
   messagesEl.innerHTML = "";
   welcomeScreen.style.display = "";
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendBtn.disabled = true;
-
   renderSidebar();
 
-  // Tell server to reset
   fetch("/api/reset", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -148,39 +133,64 @@ function beginNewChat() {
   messageInput.focus();
 }
 
+// ===== Save a message to storage =====
+function saveMessage(chatId, msgObj, firstUserText) {
+  const chats = getAllChats();
+  if (!chats[chatId]) {
+    chats[chatId] = {
+      id: chatId,
+      title: firstUserText
+        ? (firstUserText.length > 32 ? firstUserText.slice(0, 32) + "…" : firstUserText)
+        : "New conversation",
+      messages: [],
+      updatedAt: Date.now(),
+    };
+  }
+  chats[chatId].messages.push(msgObj);
+  chats[chatId].updatedAt = Date.now();
+  saveAllChats(chats);
+}
+
+// ===== Detect image requests =====
+function isImageRequest(text) {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("generate an image") ||
+    lower.includes("generate a image") ||
+    lower.includes("create an image") ||
+    lower.includes("create a image") ||
+    lower.includes("make an image") ||
+    lower.includes("make a image") ||
+    lower.includes("draw me") ||
+    lower.includes("draw a ") ||
+    lower.includes("draw an ") ||
+    lower.includes("show me a picture") ||
+    lower.includes("generate a picture") ||
+    /^(generate|create|draw|make)\s+.*(image|picture|photo|illustration)/i.test(text)
+  );
+}
+
+function extractImagePrompt(text) {
+  return text
+    .replace(/^(generate|create|make|draw|show\s+me)\s+(an?\s+)?(image|picture|photo|illustration|drawing)\s+(of\s+)?/i, "")
+    .replace(/^draw\s+me\s+(an?\s+)?/i, "")
+    .trim() || text;
+}
+
 // ===== Send message =====
 async function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || isLoading) return;
 
-  // Hide welcome screen
   welcomeScreen.style.display = "none";
 
-  // Build or update chat in storage
   const chats = getAllChats();
-  const isFirstMessage = !chats[currentChatId] || chats[currentChatId].messages.length === 0;
+  const isFirst = !chats[currentChatId] || chats[currentChatId].messages.length === 0;
 
-  if (!chats[currentChatId]) {
-    chats[currentChatId] = {
-      id: currentChatId,
-      title: "New conversation",
-      messages: [],
-      updatedAt: Date.now(),
-    };
-  }
-
-  // Set title from first user message
-  if (isFirstMessage) {
-    chats[currentChatId].title = text.length > 32 ? text.slice(0, 32) + "…" : text;
-  }
-
-  // Save user message
-  chats[currentChatId].messages.push({ role: "user", text });
-  chats[currentChatId].updatedAt = Date.now();
-  saveAllChats(chats);
-
-  renderMessage("user", text);
-  renderSidebar();
+  // Save and render user message
+  saveMessage(currentChatId, { role: "user", text }, isFirst ? text : null);
+  renderMessage("user", text, false);
+  if (isFirst) renderSidebar();
 
   messageInput.value = "";
   messageInput.style.height = "auto";
@@ -189,30 +199,42 @@ async function sendMessage() {
 
   const typingId = showTyping();
 
-  try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, sessionId }),
-    });
-
-    const data = await res.json();
-    removeTyping(typingId);
-
-    const reply = res.ok ? data.reply : `Sorry, something went wrong: ${data.error}`;
-
-    // Save assistant message
-    const updatedChats = getAllChats();
-    if (updatedChats[currentChatId]) {
-      updatedChats[currentChatId].messages.push({ role: "assistant", text: reply });
-      updatedChats[currentChatId].updatedAt = Date.now();
-      saveAllChats(updatedChats);
+  if (isImageRequest(text)) {
+    const prompt = extractImagePrompt(text);
+    try {
+      const res = await fetch("/api/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      removeTyping(typingId);
+      if (res.ok) {
+        saveMessage(currentChatId, { type: "image", prompt, imageUrl: data.imageUrl });
+        renderImageMessage(prompt, data.imageUrl, false);
+      } else {
+        renderMessage("assistant", `Couldn't generate the image: ${data.error}`, false);
+      }
+    } catch {
+      removeTyping(typingId);
+      renderMessage("assistant", "Network error. Couldn't generate the image.", false);
     }
-
-    renderMessage("assistant", reply);
-  } catch {
-    removeTyping(typingId);
-    renderMessage("assistant", "Network error. Please check your connection and try again.");
+  } else {
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, sessionId }),
+      });
+      const data = await res.json();
+      removeTyping(typingId);
+      const reply = res.ok ? data.reply : `Sorry, something went wrong: ${data.error}`;
+      saveMessage(currentChatId, { role: "assistant", text: reply });
+      renderMessage("assistant", reply, false);
+    } catch {
+      removeTyping(typingId);
+      renderMessage("assistant", "Network error. Please check your connection.", false);
+    }
   }
 
   isLoading = false;
@@ -220,7 +242,7 @@ async function sendMessage() {
   messageInput.focus();
 }
 
-// ===== Render a single message =====
+// ===== Render a text message =====
 function renderMessage(role, text) {
   const wrapper = document.createElement("div");
   wrapper.classList.add("message", role);
@@ -238,7 +260,6 @@ function renderMessage(role, text) {
 
   const textEl = document.createElement("div");
   textEl.classList.add("message-text");
-
   if (role === "assistant") {
     textEl.innerHTML = marked.parse(text);
   } else {
@@ -250,7 +271,38 @@ function renderMessage(role, text) {
   wrapper.appendChild(avatar);
   wrapper.appendChild(content);
   messagesEl.appendChild(wrapper);
+  scrollToBottom();
+}
 
+// ===== Render an image message =====
+function renderImageMessage(prompt, imageUrl) {
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("message", "assistant");
+
+  const avatar = document.createElement("div");
+  avatar.classList.add("message-avatar");
+  avatar.textContent = "AI";
+
+  const content = document.createElement("div");
+  content.classList.add("message-content");
+
+  const roleLabel = document.createElement("div");
+  roleLabel.classList.add("message-role");
+  roleLabel.textContent = "Jesse AI";
+
+  const textEl = document.createElement("div");
+  textEl.classList.add("message-text");
+  textEl.innerHTML = `<p>Here's your image of <strong>${escapeHtml(prompt)}</strong>:</p>
+    <div class="image-container">
+      <img src="${imageUrl}" alt="${escapeHtml(prompt)}" class="generated-image" loading="lazy" />
+      <a href="${imageUrl}" download="jesse-ai-image.jpg" class="download-btn">Download</a>
+    </div>`;
+
+  content.appendChild(roleLabel);
+  content.appendChild(textEl);
+  wrapper.appendChild(avatar);
+  wrapper.appendChild(content);
+  messagesEl.appendChild(wrapper);
   scrollToBottom();
 }
 

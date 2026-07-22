@@ -25,6 +25,17 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 // Store conversation histories (in-memory, keyed by session ID)
 const sessions = {};
 
+// Image generation endpoint
+app.post("/api/image", async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt || !prompt.trim()) {
+    return res.status(400).json({ error: "Prompt cannot be empty." });
+  }
+  const encoded = encodeURIComponent(prompt.trim());
+  const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=768&height=512&nologo=true`;
+  res.json({ imageUrl });
+});
+
 // Chat endpoint
 app.post("/api/chat", async (req, res) => {
   const { message, sessionId } = req.body;

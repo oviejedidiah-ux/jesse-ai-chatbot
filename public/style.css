@@ -553,3 +553,37 @@ textarea#messageInput::placeholder {
   padding: 8px 10px;
   text-align: center;
 }
+
+/* ===== Image Generation ===== */
+.image-container {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.generated-image {
+  max-width: 100%;
+  width: 480px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.download-btn {
+  display: inline-block;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  text-decoration: none;
+  width: fit-content;
+  transition: background var(--transition), color var(--transition);
+}
+
+.download-btn:hover {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
