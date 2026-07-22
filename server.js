@@ -99,7 +99,7 @@ app.post("/api/chat", async (req, res) => {
     // Get or create chat session
     if (!sessions[sessionId]) {
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
         systemInstruction: systemPrompt,
       });
       sessions[sessionId] = model.startChat({ history: [] });
