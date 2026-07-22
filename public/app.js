@@ -2,10 +2,9 @@
 const STORAGE_KEY = "jesse_ai_chats";
 
 // ===== State =====
-let sessionId = crypto.randomUUID();
 let isLoading = false;
 let currentChatId = null;
-let chats = loadChatsFromStorage();
+let sessionId = null;
 
 // ===== DOM Elements =====
 const messagesEl = document.getElementById("messages");
@@ -18,8 +17,8 @@ const menuToggle = document.getElementById("menuToggle");
 const sidebar = document.querySelector(".sidebar");
 const chatHistoryEl = document.getElementById("chatHistory");
 
-// ===== Storage =====
-function loadChatsFromStorage() {
+// ===== Storage helpers =====
+function getAllChats() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
   } catch {
@@ -27,49 +26,41 @@ function loadChatsFromStorage() {
   }
 }
 
-function saveChatsToStorage() {
+function saveAllChats(chats) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
 }
 
-function createNewChat() {
-  const id = crypto.randomUUID();
-  chats[id] = {
-    id,
-    title: "New conversation",
-    messages: [],
-    createdAt: Date.now(),
-  };
-  saveChatsToStorage();
-  return id;
+function getChat(id) {
+  return getAllChats()[id] || null;
 }
 
-function saveChatMessage(chatId, role, text) {
-  if (!chats[chatId]) return;
-  chats[chatId].messages.push({ role, text, timestamp: Date.now() });
-  saveChatsToStorage();
+function saveChat(chat) {
+  const chats = getAllChats();
+  chats[chat.id] = chat;
+  saveAllChats(chats);
 }
 
-function updateChatTitle(chatId, title) {
-  if (!chats[chatId]) return;
-  chats[chatId].title = title.length > 32 ? title.slice(0, 32) + "…" : title;
-  saveChatsToStorage();
+function deleteChat(id) {
+  const chats = getAllChats();
+  delete chats[id];
+  saveAllChats(chats);
 }
 
-// ===== Render Sidebar History =====
-function renderChatHistory() {
+// ===== Render sidebar =====
+function renderSidebar() {
   chatHistoryEl.innerHTML = "";
 
-  // Only show chats that have at least one message
-  const sorted = Object.values(chats)
-    .filter((c) => c.messages.length > 0)
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const chats = getAllChats();
+  const list = Object.values(chats)
+    .filter((c) => c.messages && c.messages.length > 0)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
-  if (sorted.length === 0) {
+  if (list.length === 0) {
     chatHistoryEl.innerHTML = `<p class="no-history">No saved chats yet</p>`;
     return;
   }
 
-  sorted.forEach((chat) => {
+  list.forEach((chat) => {
     const item = document.createElement("div");
     item.classList.add("session-item");
     if (chat.id === currentChatId) item.classList.add("active");
@@ -78,88 +69,76 @@ function renderChatHistory() {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
       </svg>
-      <span>${chat.title}</span>
-      <button class="delete-chat-btn" data-id="${chat.id}" title="Delete chat">
+      <span class="session-title">${escapeHtml(chat.title)}</span>
+      <button class="delete-chat-btn" title="Delete">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     `;
 
-    // Load chat on click
     item.addEventListener("click", (e) => {
-      if (e.target.closest(".delete-chat-btn")) return;
+      if (e.target.closest(".delete-chat-btn")) {
+        e.stopPropagation();
+        deleteChatAndRefresh(chat.id);
+        return;
+      }
       loadChat(chat.id);
       if (window.innerWidth <= 768) sidebar.classList.remove("open");
-    });
-
-    // Delete chat
-    item.querySelector(".delete-chat-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      deleteChat(chat.id);
     });
 
     chatHistoryEl.appendChild(item);
   });
 }
 
-// ===== Load a saved chat =====
-function loadChat(chatId) {
-  if (!chats[chatId]) return;
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
-  currentChatId = chatId;
-  sessionId = chatId; // reuse chatId as sessionId for server continuity
+// ===== Load a past chat =====
+function loadChat(id) {
+  const chat = getChat(id);
+  if (!chat) return;
+
+  currentChatId = id;
+  sessionId = id;
 
   messagesEl.innerHTML = "";
   welcomeScreen.style.display = "none";
 
-  chats[chatId].messages.forEach((msg) => {
-    appendMessage(msg.role, msg.text, false); // false = don't save again
-  });
+  chat.messages.forEach((msg) => renderMessage(msg.role, msg.text));
 
-  renderChatHistory();
+  renderSidebar();
   scrollToBottom();
+  messageInput.focus();
 }
 
-// ===== Delete a chat =====
-function deleteChat(chatId) {
-  delete chats[chatId];
-  saveChatsToStorage();
-
-  // If deleted current chat, start fresh
-  if (chatId === currentChatId) {
-    startNewChat();
+// ===== Delete chat =====
+function deleteChatAndRefresh(id) {
+  deleteChat(id);
+  if (id === currentChatId) {
+    beginNewChat();
   } else {
-    renderChatHistory();
+    renderSidebar();
   }
 }
 
-// ===== Start a new chat =====
-function startNewChat() {
-  // If current chat has no messages, reuse it instead of creating a new one
-  if (currentChatId && chats[currentChatId] && chats[currentChatId].messages.length === 0) {
-    messagesEl.innerHTML = "";
-    welcomeScreen.style.display = "";
-    messageInput.value = "";
-    messageInput.style.height = "auto";
-    sendBtn.disabled = true;
-    renderChatHistory();
-    messageInput.focus();
-    return;
-  }
-
-  currentChatId = createNewChat();
+// ===== Begin a new chat =====
+function beginNewChat() {
+  // Generate fresh IDs
+  currentChatId = crypto.randomUUID();
   sessionId = currentChatId;
 
+  // Clear UI
   messagesEl.innerHTML = "";
   welcomeScreen.style.display = "";
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendBtn.disabled = true;
 
-  renderChatHistory();
+  renderSidebar();
 
-  // Tell server to clear session
+  // Tell server to reset
   fetch("/api/reset", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -169,55 +148,7 @@ function startNewChat() {
   messageInput.focus();
 }
 
-// ===== Auto-resize textarea =====
-messageInput.addEventListener("input", () => {
-  messageInput.style.height = "auto";
-  messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
-  sendBtn.disabled = messageInput.value.trim() === "" || isLoading;
-});
-
-// ===== Send on Enter (Shift+Enter for newline) =====
-messageInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    if (!sendBtn.disabled) sendMessage();
-  }
-});
-
-// ===== Send button =====
-sendBtn.addEventListener("click", sendMessage);
-
-// ===== Suggestion chips =====
-document.querySelectorAll(".suggestion-chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    messageInput.value = chip.dataset.prompt;
-    messageInput.style.height = "auto";
-    messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
-    sendBtn.disabled = false;
-    sendMessage();
-  });
-});
-
-// ===== New Chat button =====
-newChatBtn.addEventListener("click", () => {
-  startNewChat();
-  if (window.innerWidth <= 768) sidebar.classList.remove("open");
-});
-
-// ===== Sidebar toggle =====
-menuToggle.addEventListener("click", () => {
-  sidebar.classList.toggle("open");
-});
-
-document.addEventListener("click", (e) => {
-  if (window.innerWidth <= 768 && sidebar.classList.contains("open")) {
-    if (!sidebar.contains(e.target) && e.target !== menuToggle) {
-      sidebar.classList.remove("open");
-    }
-  }
-});
-
-// ===== Core: Send Message =====
+// ===== Send message =====
 async function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || isLoading) return;
@@ -225,23 +156,37 @@ async function sendMessage() {
   // Hide welcome screen
   welcomeScreen.style.display = "none";
 
-  // Update chat title with first message
-  if (chats[currentChatId] && chats[currentChatId].messages.length === 0) {
-    updateChatTitle(currentChatId, text);
-    renderChatHistory();
+  // Build or update chat in storage
+  const chats = getAllChats();
+  const isFirstMessage = !chats[currentChatId] || chats[currentChatId].messages.length === 0;
+
+  if (!chats[currentChatId]) {
+    chats[currentChatId] = {
+      id: currentChatId,
+      title: "New conversation",
+      messages: [],
+      updatedAt: Date.now(),
+    };
   }
 
-  // Add user message
-  appendMessage("user", text);
-  saveChatMessage(currentChatId, "user", text);
+  // Set title from first user message
+  if (isFirstMessage) {
+    chats[currentChatId].title = text.length > 32 ? text.slice(0, 32) + "…" : text;
+  }
 
-  // Clear input
+  // Save user message
+  chats[currentChatId].messages.push({ role: "user", text });
+  chats[currentChatId].updatedAt = Date.now();
+  saveAllChats(chats);
+
+  renderMessage("user", text);
+  renderSidebar();
+
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendBtn.disabled = true;
   isLoading = true;
 
-  // Show typing indicator
   const typingId = showTyping();
 
   try {
@@ -254,15 +199,20 @@ async function sendMessage() {
     const data = await res.json();
     removeTyping(typingId);
 
-    if (res.ok) {
-      appendMessage("assistant", data.reply);
-      saveChatMessage(currentChatId, "assistant", data.reply);
-    } else {
-      appendMessage("assistant", `Sorry, something went wrong: ${data.error}`);
+    const reply = res.ok ? data.reply : `Sorry, something went wrong: ${data.error}`;
+
+    // Save assistant message
+    const updatedChats = getAllChats();
+    if (updatedChats[currentChatId]) {
+      updatedChats[currentChatId].messages.push({ role: "assistant", text: reply });
+      updatedChats[currentChatId].updatedAt = Date.now();
+      saveAllChats(updatedChats);
     }
-  } catch (err) {
+
+    renderMessage("assistant", reply);
+  } catch {
     removeTyping(typingId);
-    appendMessage("assistant", "Network error. Please check your connection and try again.");
+    renderMessage("assistant", "Network error. Please check your connection and try again.");
   }
 
   isLoading = false;
@@ -270,8 +220,8 @@ async function sendMessage() {
   messageInput.focus();
 }
 
-// ===== Append a message bubble =====
-function appendMessage(role, text, save = true) {
+// ===== Render a single message =====
+function renderMessage(role, text) {
   const wrapper = document.createElement("div");
   wrapper.classList.add("message", role);
 
@@ -322,20 +272,15 @@ function showTyping() {
   roleLabel.classList.add("message-role");
   roleLabel.textContent = "Jesse AI";
 
-  const indicator = document.createElement("div");
-  indicator.classList.add("typing-indicator");
-  indicator.innerHTML = `
-    <div class="typing-dot"></div>
-    <div class="typing-dot"></div>
-    <div class="typing-dot"></div>
-  `;
+  const dots = document.createElement("div");
+  dots.classList.add("typing-indicator");
+  dots.innerHTML = `<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>`;
 
   content.appendChild(roleLabel);
-  content.appendChild(indicator);
+  content.appendChild(dots);
   wrapper.appendChild(avatar);
   wrapper.appendChild(content);
   messagesEl.appendChild(wrapper);
-
   scrollToBottom();
   return id;
 }
@@ -345,16 +290,54 @@ function removeTyping(id) {
   if (el) el.remove();
 }
 
-// ===== Scroll to bottom =====
+// ===== Scroll =====
 function scrollToBottom() {
-  messagesContainer.scrollTo({
-    top: messagesContainer.scrollHeight,
-    behavior: "smooth",
-  });
+  messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: "smooth" });
 }
+
+// ===== Event listeners =====
+messageInput.addEventListener("input", () => {
+  messageInput.style.height = "auto";
+  messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
+  sendBtn.disabled = messageInput.value.trim() === "" || isLoading;
+});
+
+messageInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    if (!sendBtn.disabled) sendMessage();
+  }
+});
+
+sendBtn.addEventListener("click", sendMessage);
+
+newChatBtn.addEventListener("click", () => {
+  beginNewChat();
+  if (window.innerWidth <= 768) sidebar.classList.remove("open");
+});
+
+menuToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
+
+document.addEventListener("click", (e) => {
+  if (window.innerWidth <= 768 && sidebar.classList.contains("open")) {
+    if (!sidebar.contains(e.target) && e.target !== menuToggle) {
+      sidebar.classList.remove("open");
+    }
+  }
+});
+
+document.querySelectorAll(".suggestion-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    messageInput.value = chip.dataset.prompt;
+    messageInput.style.height = "auto";
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + "px";
+    sendBtn.disabled = false;
+    sendMessage();
+  });
+});
 
 // ===== Init =====
 window.addEventListener("load", () => {
-  startNewChat();
+  beginNewChat();
   messageInput.focus();
 });
