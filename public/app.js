@@ -59,7 +59,10 @@ function updateChatTitle(chatId, title) {
 function renderChatHistory() {
   chatHistoryEl.innerHTML = "";
 
-  const sorted = Object.values(chats).sort((a, b) => b.createdAt - a.createdAt);
+  // Only show chats that have at least one message
+  const sorted = Object.values(chats)
+    .filter((c) => c.messages.length > 0)
+    .sort((a, b) => b.createdAt - a.createdAt);
 
   if (sorted.length === 0) {
     chatHistoryEl.innerHTML = `<p class="no-history">No saved chats yet</p>`;
@@ -133,6 +136,18 @@ function deleteChat(chatId) {
 
 // ===== Start a new chat =====
 function startNewChat() {
+  // If current chat has no messages, reuse it instead of creating a new one
+  if (currentChatId && chats[currentChatId] && chats[currentChatId].messages.length === 0) {
+    messagesEl.innerHTML = "";
+    welcomeScreen.style.display = "";
+    messageInput.value = "";
+    messageInput.style.height = "auto";
+    sendBtn.disabled = true;
+    renderChatHistory();
+    messageInput.focus();
+    return;
+  }
+
   currentChatId = createNewChat();
   sessionId = currentChatId;
 
