@@ -2,6 +2,7 @@
 const STORAGE_KEY = "jesse_ai_chats";
 const AI_NAME_KEY = "jesse_ai_name";
 const THEME_KEY = "jesse_ai_theme";
+const PROFILE_KEY = "jesse_ai_profile";
 
 // ===== Mood config =====
 const MOODS = {
@@ -44,6 +45,62 @@ const saveNameBtn = document.getElementById("saveNameBtn");
 const themeToggle = document.getElementById("themeToggle");
 const themeIcon = document.getElementById("themeIcon");
 const themeText = document.getElementById("themeText");
+
+// ===== Relationship Profile =====
+function getProfile() {
+  try {
+    return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {
+      trustLevel: 1,
+      messageCount: 0,
+      userName: null,
+      interests: [],
+      moodHistory: [],
+    };
+  } catch {
+    return { trustLevel: 1, messageCount: 0, userName: null, interests: [], moodHistory: [] };
+  }
+}
+
+function saveProfile(profile) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+function updateProfile(mood, detectedName, detectedInterests) {
+  const profile = getProfile();
+
+  // Increment message count
+  profile.messageCount = (profile.messageCount || 0) + 1;
+
+  // Update trust level based on message count
+  if (profile.messageCount >= 50) profile.trustLevel = 5;
+  else if (profile.messageCount >= 25) profile.trustLevel = 4;
+  else if (profile.messageCount >= 10) profile.trustLevel = 3;
+  else if (profile.messageCount >= 4) profile.trustLevel = 2;
+  else profile.trustLevel = 1;
+
+  // Save user name if detected
+  if (detectedName && !profile.userName) {
+    profile.userName = detectedName;
+  }
+
+  // Add new interests (avoid duplicates, max 15)
+  if (detectedInterests && detectedInterests.length > 0) {
+    detectedInterests.forEach((i) => {
+      if (!profile.interests.includes(i)) profile.interests.push(i);
+    });
+    if (profile.interests.length > 15) profile.interests = profile.interests.slice(-15);
+  }
+
+  // Track mood history (max 10)
+  if (mood && mood !== "neutral") {
+    profile.moodHistory = profile.moodHistory || [];
+    profile.moodHistory.push(mood);
+    if (profile.moodHistory.length > 10) profile.moodHistory = profile.moodHistory.slice(-10);
+  }
+
+  saveProfile(profile);
+  return profile;
+}
 
 // ===== Apply AI name across UI =====
 function applyAiName(name) {
@@ -294,12 +351,15 @@ async function sendMessage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, sessionId }),
+        body: JSON.stringify({ message: text, sessionId, profile: getProfile(), aiName }),
       });
       const data = await res.json();
       removeTyping(typingId);
       const reply = res.ok ? data.reply : `Sorry, something went wrong: ${data.error}`;
-      if (res.ok && data.mood) updateMood(data.mood);
+      if (res.ok) {
+        const profile = updateProfile(data.mood, data.detectedName, data.detectedInterests);
+        updateMood(data.mood);
+      }
       saveMessage(currentChatId, { role: "assistant", text: reply });
       renderMessage("assistant", reply);
     } catch {
