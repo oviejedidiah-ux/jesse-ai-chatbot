@@ -10,6 +10,13 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+// Serve static files with no caching for HTML
+app.use((req, res, next) => {
+  if (req.path.endsWith('.html') || req.path === '/') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 // Initialize Groq
@@ -90,6 +97,7 @@ app.post("/api/reset", (req, res) => {
 
 // Serve frontend
 app.get("*", (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
