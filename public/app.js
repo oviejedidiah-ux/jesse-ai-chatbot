@@ -86,7 +86,7 @@ function updateProfile(mood, detectedName, detectedInterests) {
 function applyAiName(name) {
   aiName = name;
   sidebarName.textContent = name;
-  topbarName.textContent = `${name} · Gemini`;
+  topbarName.textContent = `${name} · OpenRouter`;
   pageTitle.textContent = name;
   inputHint.textContent = `${name} can make mistakes. Verify important information.`;
 }
@@ -99,7 +99,7 @@ function checkNameSetup() {
     aiNameInput.focus();
   } else {
     applyAiName(saved);
-    topbarName.textContent = `${saved} · Gemini`;
+    topbarName.textContent = `${saved} · OpenRouter`;
   }
 }
 
