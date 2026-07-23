@@ -109,7 +109,7 @@ app.post("/api/chat", async (req, res) => {
         "X-Title": "Jesse AI Chatbot",
       },
       body: JSON.stringify({
-        model: "google/gemma-4-26b-a4b-it:free",
+        model: "tencent/hy3:free",
         messages: sessions[sessionId],
         max_tokens: 1024,
         temperature: 0.75,
