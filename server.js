@@ -1,7 +1,6 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const path = require("path");
 
 const app = express();
@@ -18,13 +17,10 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, "public")));
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// Store conversation histories (in-memory, keyed by session ID)
+// Store conversation histories
 const sessions = {};
 
-// ===== Build dynamic system prompt =====
+// ===== Build system prompt =====
 function buildSystemPrompt(profile, aiName) {
   const name = aiName || "Jesse AI";
   const userName = profile.userName ? `The user's name is ${profile.userName}.` : "You don't know the user's name yet — ask naturally at some point.";
@@ -37,10 +33,10 @@ function buildSystemPrompt(profile, aiName) {
 
   const stages = {
     1: "You're just getting to know each other. Be warm, welcoming and curious but not overly familiar.",
-    2: "You've chatted a bit. Be more relaxed and start showing your personality. Reference things they've mentioned.",
-    3: "You're friends now. Be casual, joke around, show you remember and care about what they've shared.",
+    2: "You've chatted a bit. Be more relaxed and start showing your personality.",
+    3: "You're friends now. Be casual, joke around, show you remember and care.",
     4: "You're good friends. Be real — tease kindly, be honest, check in on things they've told you.",
-    5: "You're close friends. Be completely yourself — funny, real, caring. Make every conversation feel personal.",
+    5: "You're close friends. Be completely yourself — funny, real, caring and personal.",
   };
 
   return `You are ${name} — an emotionally intelligent AI companion who acts like a real friend.
@@ -48,7 +44,7 @@ function buildSystemPrompt(profile, aiName) {
 RELATIONSHIP: Trust level ${trustLevel}/5 (${messageCount} messages). ${userName} ${interests} ${recentMoods}
 STAGE: ${stages[Math.min(trustLevel, 5)]}
 
-PERSONALITY: Warm, genuine, funny when appropriate, emotionally intelligent. You pick up on feelings and respond to them first. You remember things and bring them up naturally. You give real opinions. As trust grows you become more personal and relaxed.
+PERSONALITY: Warm, genuine, funny when appropriate, emotionally intelligent. Pick up on feelings and respond to them first. Remember things and bring them up naturally. Give real opinions. As trust grows become more personal and relaxed.
 
 RULES: Acknowledge emotions before solutions. Never be robotic. Keep it conversational and human.`;
 }
@@ -95,19 +91,40 @@ app.post("/api/chat", async (req, res) => {
 
   const systemPrompt = buildSystemPrompt(profile || {}, aiName);
 
+  if (!sessions[sessionId]) {
+    sessions[sessionId] = [{ role: "system", content: systemPrompt }];
+  } else {
+    sessions[sessionId][0] = { role: "system", content: systemPrompt };
+  }
+
+  sessions[sessionId].push({ role: "user", content: message });
+
   try {
-    // Get or create chat session
-    if (!sessions[sessionId]) {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
-        systemInstruction: systemPrompt,
-      });
-      sessions[sessionId] = model.startChat({ history: [] });
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://jesse-ai-chatbot-production.up.railway.app",
+        "X-Title": "Jesse AI Chatbot",
+      },
+      body: JSON.stringify({
+        model: "mistralai/mistral-7b-instruct:free",
+        messages: sessions[sessionId],
+        max_tokens: 1024,
+        temperature: 0.75,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("OpenRouter error:", JSON.stringify(data));
+      return res.status(500).json({ error: data.error?.message || "Something went wrong." });
     }
 
-    const chat = sessions[sessionId];
-    const result = await chat.sendMessage(message);
-    const reply = result.response.text();
+    const reply = data.choices?.[0]?.message?.content || "No response.";
+    sessions[sessionId].push({ role: "assistant", content: reply });
 
     const mood = detectMood(message);
     const detectedName = extractUserName(message);
@@ -115,12 +132,12 @@ app.post("/api/chat", async (req, res) => {
 
     res.json({ reply, mood, detectedName, detectedInterests });
   } catch (error) {
-    console.error("Gemini API error:", error.message);
-    res.status(500).json({ error: error.message || "Something went wrong. Please try again." });
+    console.error("Error:", error.message);
+    res.status(500).json({ error: error.message || "Something went wrong." });
   }
 });
 
-// Reset conversation endpoint
+// Reset conversation
 app.post("/api/reset", (req, res) => {
   const { sessionId } = req.body;
   if (sessionId && sessions[sessionId]) delete sessions[sessionId];
