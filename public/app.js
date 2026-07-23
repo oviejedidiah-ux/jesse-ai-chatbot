@@ -4,6 +4,7 @@ const AI_NAME_KEY = "jesse_ai_name";
 const THEME_KEY = "jesse_ai_theme";
 const PROFILE_KEY = "jesse_ai_profile";
 const LAST_VISIT_KEY = "jesse_ai_last_visit";
+const USER_AVATAR_KEY = "jesse_ai_user_avatar";
 
 // ===== Daily Greeting =====
 function getDailyGreeting() {
@@ -78,9 +79,50 @@ const inputHint = document.getElementById("inputHint");
 const nameModal = document.getElementById("nameModal");
 const aiNameInput = document.getElementById("aiNameInput");
 const saveNameBtn = document.getElementById("saveNameBtn");
+const avatarInput = document.getElementById("avatarInput");
+const avatarPreview = document.getElementById("avatarPreview");
 const themeToggle = document.getElementById("themeToggle");
 const themeIcon = document.getElementById("themeIcon");
 const themeText = document.getElementById("themeText");
+
+// ===== Avatar Upload =====
+let userAvatar = localStorage.getItem(USER_AVATAR_KEY);
+
+avatarInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (file && file.type.startsWith("image/")) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      userAvatar = event.target.result;
+      avatarPreview.innerHTML = `<img src="${userAvatar}" alt="Avatar" class="avatar-img" />`;
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// ===== Format timestamp =====
+function formatTimestamp(date) {
+  const d = new Date(date);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMins = Math.floor(diffMs / 60000);
+  
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  
+  const isToday = d.toDateString() === now.toDateString();
+  const isYesterday = new Date(now - 86400000).toDateString() === d.toDateString();
+  
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  
+  if (isToday) return `Today ${time}`;
+  if (isYesterday) return `Yesterday ${time}`;
+  
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + time;
+}
 
 // ===== Relationship Profile =====
 function getProfile() {
@@ -143,6 +185,7 @@ function checkNameSetup() {
 saveNameBtn.addEventListener("click", () => {
   const name = aiNameInput.value.trim() || "Jesse AI";
   localStorage.setItem(AI_NAME_KEY, name);
+  if (userAvatar) localStorage.setItem(USER_AVATAR_KEY, userAvatar);
   applyAiName(name);
   nameModal.classList.remove("active");
   messageInput.focus();
@@ -436,8 +479,14 @@ function renderMessage(role, text) {
 
   const avatar = document.createElement("div");
   avatar.classList.add("message-avatar");
+  
   if (role === "user") {
-    avatar.textContent = "U";
+    const savedAvatar = localStorage.getItem(USER_AVATAR_KEY);
+    if (savedAvatar) {
+      avatar.innerHTML = `<img src="${savedAvatar}" alt="You" class="avatar-img" />`;
+    } else {
+      avatar.textContent = "U";
+    }
   } else {
     avatar.textContent = "AI";
     avatar.style.background = MOODS[currentMood]?.color || MOODS.neutral.color;
@@ -446,16 +495,26 @@ function renderMessage(role, text) {
   const content = document.createElement("div");
   content.classList.add("message-content");
 
+  const header = document.createElement("div");
+  header.classList.add("message-header");
+  
   const roleLabel = document.createElement("div");
   roleLabel.classList.add("message-role");
   roleLabel.textContent = role === "user" ? "You" : aiName;
+  
+  const timestamp = document.createElement("div");
+  timestamp.classList.add("message-timestamp");
+  timestamp.textContent = formatTimestamp(Date.now());
+
+  header.appendChild(roleLabel);
+  header.appendChild(timestamp);
 
   const textEl = document.createElement("div");
   textEl.classList.add("message-text");
   if (role === "assistant") textEl.innerHTML = marked.parse(text);
   else textEl.textContent = text;
 
-  content.appendChild(roleLabel);
+  content.appendChild(header);
   content.appendChild(textEl);
   wrapper.appendChild(avatar);
   wrapper.appendChild(content);
