@@ -971,3 +971,65 @@ textarea#messageInput::placeholder {
   color: #e05c5c;
   border-color: #e05c5c;
 }
+
+/* ===== Animated Welcome Screen ===== */
+.typing-text {
+  overflow: hidden;
+  border-right: 3px solid var(--accent);
+  white-space: nowrap;
+  margin: 0 auto;
+  animation: typing 2s steps(30, end), blink-caret 0.75s step-end infinite;
+  animation-fill-mode: forwards;
+  max-width: fit-content;
+}
+
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes blink-caret {
+  from, to { border-color: transparent; }
+  50% { border-color: var(--accent); }
+}
+
+.fade-in-text {
+  opacity: 0;
+  animation: fadeInUp 0.8s ease 2.2s forwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.welcome-icon {
+  animation: scaleIn 0.5s ease;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.suggestions {
+  opacity: 0;
+  animation: fadeInUp 0.8s ease 2.5s forwards;
+}
+
+/* Hide caret after animation completes */
+.typing-text.completed {
+  border-right: none;
+}

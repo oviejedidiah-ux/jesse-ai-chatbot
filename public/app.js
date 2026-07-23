@@ -3,6 +3,43 @@ const STORAGE_KEY = "jesse_ai_chats";
 const AI_NAME_KEY = "jesse_ai_name";
 const THEME_KEY = "jesse_ai_theme";
 const PROFILE_KEY = "jesse_ai_profile";
+const LAST_VISIT_KEY = "jesse_ai_last_visit";
+
+// ===== Daily Greeting =====
+function getDailyGreeting() {
+  const hour = new Date().getHours();
+  const lastVisit = localStorage.getItem(LAST_VISIT_KEY);
+  const lastVisitDate = lastVisit ? new Date(lastVisit) : null;
+  const today = new Date().toDateString();
+  
+  const isSameDay = lastVisitDate && lastVisitDate.toDateString() === today;
+  const wasYesterday = lastVisitDate && 
+    new Date(lastVisitDate.getTime() + 86400000).toDateString() === today;
+  
+  localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString());
+  
+  let greeting = "";
+  
+  if (hour < 12) greeting = "Good morning";
+  else if (hour < 18) greeting = "Good afternoon";
+  else greeting = "Good evening";
+  
+  if (!lastVisit) {
+    return `${greeting}! Welcome`;
+  } else if (isSameDay) {
+    return `${greeting} again`;
+  } else if (wasYesterday) {
+    return `${greeting}! Good to see you back`;
+  } else {
+    const daysSince = Math.floor((Date.now() - new Date(lastVisit).getTime()) / 86400000);
+    if (daysSince > 7) {
+      return `${greeting}! It's been a while`;
+    }
+    return `${greeting}! Welcome back`;
+  }
+}
+
+// ===== Constants =====
 
 // ===== Mood config =====
 const MOODS = {
@@ -545,6 +582,17 @@ window.addEventListener("load", () => {
   const savedTheme = localStorage.getItem(THEME_KEY) || "dark";
   applyTheme(savedTheme);
   checkNameSetup();
+  
+  // Set daily greeting
+  const greeting = getDailyGreeting();
+  const welcomeTitle = document.getElementById("welcomeTitle");
+  welcomeTitle.textContent = greeting + "!";
+  
+  // Remove typing cursor after animation completes
+  setTimeout(() => {
+    welcomeTitle.classList.add("completed");
+  }, 2500);
+  
   beginNewChat();
   updateMood("neutral");
   messageInput.focus();
