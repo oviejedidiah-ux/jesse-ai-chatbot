@@ -109,7 +109,7 @@ app.post("/api/chat", async (req, res) => {
         "X-Title": "Jesse AI Chatbot",
       },
       body: JSON.stringify({
-        model: "tencent/hy3:free",
+        model: "openrouter/free",
         messages: sessions[sessionId],
         max_tokens: 1024,
         temperature: 0.75,
